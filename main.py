@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-import numpy as np
+# import numpy as np
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
@@ -15,8 +15,8 @@ def main():
     OBS_DIM = 2  # 观测维度
     LATENT_DIM = 2  # 潜在维度
     STATIC_DIM = 0  # 静态变量维度
-    NUM_EPOCHS = 50
-    LEARNING_RATE = 0.01
+    NUM_EPOCHS = 20
+    LEARNING_RATE = 0.001
 
     # 1. 生成数据
     simu_data = SimulatedDataset.simulate(
@@ -26,7 +26,7 @@ def main():
         latent_dim=LATENT_DIM,
         static_dim=STATIC_DIM,
         missing_rate=0.0,
-        noise_std_per_cluster=(1.0, 1.0, 1.0),
+        noise_std_per_cluster=(0.1, 0.1, 0.1),
         seed=42,
         num_time_internval=(5, 11),
         time_interval=(1, 11),
@@ -66,7 +66,7 @@ def main():
         bn=False,
         adjoint=False,
         init_state_encoder=False,
-        activation=nn.ReLU,
+        activation=nn.GELU,
         method="rk4",
         options={"step_size": 0.1},
     )
@@ -78,6 +78,9 @@ def main():
         update_nn_params_epochs_every_round=2,
     )
     trainer.train()
+
+    fig = trainer.plot_vector_field()
+    fig.savefig("vector_field.png")
 
 
 if __name__ == "__main__":

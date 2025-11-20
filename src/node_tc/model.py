@@ -1,5 +1,7 @@
 from typing import overload, Literal, Type
+from copy import deepcopy
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,6 +9,8 @@ from torchdiffeq import odeint_adjoint, odeint
 from sklearn.metrics import adjusted_rand_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 
 
 class MLP(nn.Module):
@@ -274,6 +278,9 @@ class EMTrainer:
         self.model.to(self.device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
+        self._obs_start: np.ndarray | None = None
+        self._obs_end: np.ndarray | None = None
+
     @overload
     def e_step(self, return_true_clusters: Literal[False]) -> torch.Tensor:
         pass
@@ -358,7 +365,34 @@ class EMTrainer:
         var = residue_sum / weight_sum[:, None]
         self.model.log_vars.data = torch.log(var.clamp(min=1e-6))
 
+    def find_observation_range(self):
+        obs_start_list, obs_end_list = [], []
+        with torch.no_grad():
+            for batch in tqdm(
+                self.loader, desc="Finding observation range:", leave=False
+            ):
+                batch = {k: v.to(self.device) for k, v in batch.items()}
+                obs = batch["observations"]  # (B, T, D)
+                mask = batch["mask"]  # (B, T)
+
+                i, j = torch.nonzero(mask == 1.0, as_tuple=True)
+                obs_start_list.append(obs[i, j].min(dim=0).values)
+                obs_end_list.append(obs[i, j].max(dim=0).values)
+
+        self._obs_start = (
+            torch.stack(obs_start_list, dim=0).min(dim=0)[0].detach().cpu().numpy()
+        )
+        self._obs_end = (
+            torch.stack(obs_end_list, dim=0).max(dim=0)[0].detach().cpu().numpy()
+        )
+
     def train(self):
+        self.find_observation_range()
+
+        best_ari = 0.0
+        best_model = None
+        best_epoch = -1
+
         responsibilities = self.e_step(False)  # initial responsibilities
         for epoch in tqdm(range(self.num_epochs), desc="Training: "):
             self.update_pi(responsibilities)
@@ -380,5 +414,71 @@ class EMTrainer:
                 f"Epoch {epoch + 1} | Adjusted Rand Index: {ari:.4f}, Entropy: {entropy:.4f}"
             )
 
+            if best_ari <= ari:
+                best_model = deepcopy(self.model.state_dict())
+                best_ari = ari
+                best_epoch = epoch
+
+        print(f"Best ARI: {best_ari:.4f} at epoch {best_epoch}")
+        if best_model is not None:
+            self.model.load_state_dict(best_model)
+
         print("\n训练完成!")
         return self.model
+
+    def plot_vector_field(
+        self,
+        start: np.ndarray | None = None,
+        end: np.ndarray | None = None,
+        n_steps: int = 20,
+    ) -> Figure:
+        start = start or self._obs_start
+        end = end or self._obs_end
+
+        assert start is not None and end is not None, "observation range not found"
+        assert start.shape == end.shape == (2,), "start and end must be 2D vectors"
+
+        # 创建一个包含两个子图的画布
+        fig, axs = plt.subplots(
+            1, self.model.num_clusters, figsize=(6 * self.model.num_clusters, 6)
+        )
+
+        # --- 子图 2: 学习到的向量场 ---
+        x_range = np.linspace(start[0], end[0], n_steps)
+        y_range = np.linspace(start[1], end[1], n_steps)
+        X, Y = np.meshgrid(x_range, y_range)
+        grid_points = torch.tensor(
+            np.stack([X.flatten(), Y.flatten()], axis=-1),
+            dtype=torch.float32,
+            device=self.device,
+        )
+
+        for i in range(self.model.num_clusters):
+            net = self.model.ode_funcs[i]
+            dz_dt = net(0, grid_points)
+            u = dz_dt[:, 0].reshape(n_steps, n_steps).detach().cpu().numpy()
+            v = dz_dt[:, 1].reshape(n_steps, n_steps).detach().cpu().numpy()
+
+            ax = axs[i]
+            ax.streamplot(
+                X,
+                Y,
+                u,
+                v,
+                color=("red", 0.8),
+                linewidth=0.7,
+                density=1.0,
+                broken_streamlines=True,
+                arrowstyle="->",
+            )
+
+            ax.set_xlabel("Z_1")
+            ax.set_ylabel("Z_2")
+            ax.set_title(f"Cluster {i + 1}")
+            ax.set_aspect("equal", adjustable="box")
+            ax.set_xlim(start[0], end[0])
+            ax.set_ylim(start[1], end[1])
+            ax.grid(True)
+
+        fig.tight_layout()
+        return fig
