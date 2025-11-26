@@ -5,7 +5,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from node_tc.simulate import SimulatedDataset, SimulatedDataCollateFunc
-from node_tc.model import NODETC, EMTrainer
+from node_tc.model import NODETC
+from node_tc.trainer import EMTrainer
 
 
 def main():
@@ -14,7 +15,7 @@ def main():
     NUM_CLUSTERS = 3
     OBS_DIM = 2  # 观测维度
     LATENT_DIM = 2  # 潜在维度
-    STATIC_DIM = 0  # 静态变量维度
+    STATIC_DIM = 3  # 静态变量维度
     NUM_EPOCHS = 20
     LEARNING_RATE = 0.001
 
@@ -34,21 +35,15 @@ def main():
     )
     simu_data.write_csv("./data/simulate/example1/")
 
-    # obs_all = []
-    # for sample in simu_data.samples:
-    #     for obs in sample.observations:
-    #         obs_all.append(obs)
-    # obs_all = np.concatenate(obs_all, axis=0)
-    # obs_mean, obs_std = np.mean(obs_all), np.std(obs_all)
+    # fig = simu_data.plot(num_samples_per_cluster=3, seed=42)
+    # fig.savefig("simulated_data.png")
+
     simu_data.set_transform(
         lambda x: replace(
             x,
             t=x.t / 10,  # observations=(x.observations - obs_mean) / obs_std
         )
     )
-    fig = simu_data.plot(num_samples_per_cluster=3, seed=42)
-    fig.savefig("simulated_data.png")
-
     loader = DataLoader(
         simu_data,  # type: ignore
         batch_size=64,
@@ -65,7 +60,7 @@ def main():
         num_clusters=NUM_CLUSTERS,
         bn=False,
         adjoint=False,
-        init_state_encoder=False,
+        init_state_encoder=True,
         activation=nn.GELU,
         method="rk4",
         options={"step_size": 0.1},

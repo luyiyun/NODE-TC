@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import List, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,9 +24,14 @@ class Dynamics:
         return np.dot(z, self.A.T)
 
 
-spiral_dynamics = Dynamics(np.array([[-0.1, -1.0], [1.0, -0.1]]))
-wave_dynamics = Dynamics(np.array([[0.0, -0.5], [2.0, 0.0]]))
-repulsive_dynamics = Dynamics(np.array([[0.2, 0.5], [-0.5, 0.2]]))
+ALL_DYNAMICS = [
+    Dynamics(np.array([[-0.1, -1.0], [1.0, -0.1]])),
+    Dynamics(np.array([[0.0, -0.5], [2.0, 0.0]])),
+    Dynamics(np.array([[0.2, 0.5], [-0.5, 0.2]])),
+]
+# spiral_dynamics = Dynamics(np.array([[-0.1, -1.0], [1.0, -0.1]]))
+# wave_dynamics = Dynamics(np.array([[0.0, -0.5], [2.0, 0.0]]))
+# repulsive_dynamics = Dynamics(np.array([[0.2, 0.5], [-0.5, 0.2]]))
 
 
 @dataclass
@@ -44,7 +50,7 @@ class SimulatedSample:
     true_cluster: int
     t: np.ndarray
     observations: np.ndarray
-    true_z: np.ndarray
+    # true_z: np.ndarray
     id: int
     static_vars: np.ndarray | None = None
 
@@ -66,9 +72,17 @@ class SimulatedSample:
         )
 
         # 绘制真实的潜在轨迹（仅绘制前两个维度）
+        max_t = np.max(self.t)
+        t = np.linspace(0, max_t, 100)
+        true_z = solve_ivp(
+            lambda t, x: ALL_DYNAMICS[self.true_cluster](t, x),
+            [0, t[-1]],
+            self.observations[0],
+            t_eval=t,
+        ).y.T
         ax.plot(
-            self.true_z[:, 0],
-            self.true_z[:, 1],
+            true_z[:, 0],
+            true_z[:, 1],
             "-",
             color="black",
             linewidth=2,
@@ -119,7 +133,7 @@ class SimulatedDataset:
             )
 
     def __repr__(self) -> str:
-        return f"SimulatedDataset(num_patients={len(self.samples)}, num_clusters={self.num_clusters}, obs_dim={self.samples[0].observations.shape[1]}, latent_dim={self.samples[0].true_z.shape[1]})"
+        return f"SimulatedDataset(num_patients={len(self.samples)}, num_clusters={self.num_clusters}, obs_dim={self.samples[0].observations.shape[1]}"
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -195,7 +209,6 @@ class SimulatedDataset:
         assert num_clusters <= 3, "Requested more clusters than available dynamics."
 
         rng = np.random.default_rng(seed)
-        true_dynamics = [spiral_dynamics, wave_dynamics, repulsive_dynamics]
         flag_static = static_dim > 0
 
         # 如果观测维度和潜在维度不同，需要一个固定的投影矩阵
@@ -235,7 +248,7 @@ class SimulatedDataset:
             )
             t = np.r_[0, t]  # 确保第一个时间点为0
             traj_i = solve_ivp(
-                lambda t, x: true_dynamics[k_i](t, x),
+                lambda t, x: ALL_DYNAMICS[k_i](t, x),
                 [0, t[-1]],
                 z0_i,
                 t_eval=t,
@@ -266,7 +279,7 @@ class SimulatedDataset:
                     static_vars=static_vars[i] if flag_static else None,
                     t=t,
                     observations=obs_i,
-                    true_z=traj_i,
+                    # true_z=traj_i,
                 )
             )
 
@@ -292,18 +305,14 @@ class SimulatedDataset:
         time_len, obs_arr = [], []
         for sample in self.samples:
             obs_arr.append(
-                np.concatenate(
-                    [sample.t[:, None], sample.observations, sample.true_z], axis=1
-                )
+                np.concatenate([sample.t[:, None], sample.observations], axis=1)
             )
             time_len.append(len(sample.t))
         obs_arr = np.concatenate(obs_arr)
         df_obs = pd.DataFrame(
             obs_arr,
             index=np.repeat(indice, time_len),
-            columns=["t"]
-            + [f"x{i}" for i in range(sample.observations.shape[1])]
-            + [f"z{i}" for i in range(sample.true_z.shape[1])],
+            columns=["t"] + [f"x{i}" for i in range(sample.observations.shape[1])],
         )
         df_obs.to_csv(dir / "observations.csv")
 
@@ -321,7 +330,6 @@ class SimulatedDataset:
 
             t_i = df_i["t"].to_numpy()
             obs_i = df_i.filter(regex=r"^x\d+$").to_numpy()
-            z_i = df_i.filter(regex=r"^z\d+$").to_numpy()
 
             df_meta_i = df_meta.loc[ind]
             assert isinstance(df_meta_i, pd.Series)
@@ -335,7 +343,6 @@ class SimulatedDataset:
                     true_cluster=int(df_meta_i["label"]),
                     t=t_i,
                     observations=obs_i,
-                    true_z=z_i,
                     static_vars=static_vars_i,
                     id=int(ind),
                 )
