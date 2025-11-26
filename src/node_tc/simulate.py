@@ -6,10 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
-import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-from matplotlib.axes import Axes
-from matplotlib.figure import Figure
 
 
 # --- 1. 定义真实的动态系统 (Helper Classes) ---
@@ -250,92 +247,6 @@ def read_simulate_data_from_csv(dir: str | Path) -> SimulatedDataset:
     return SimulatedDataset(samples=samples)
 
 
-def plot_simulate_sample(
-    sample: SimulatedSample,
-    ax: Axes | None = None,
-    color: str = "black",
-    title: str | None = None,
-) -> Axes:
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(8, 6))
-
-    # Matplotlib 可以很好地处理 NaN，会在缺失点处断开线条
-    # 为了更清晰，我们使用散点图表示观测值
-    # 绘制观测点（仅绘制前两个维度）
-    ax.scatter(
-        sample.observations[:, 0],
-        sample.observations[:, 1],
-        color=color,
-        alpha=0.8,
-        label="Observations (Dim 1&2)",
-    )
-
-    # 绘制真实的潜在轨迹（仅绘制前两个维度）
-    max_t = np.max(sample.t)
-    t = np.linspace(0, max_t, 100)
-    true_z = solve_ivp(
-        lambda t, x: ALL_DYNAMICS[sample.true_cluster](t, x),
-        [0, t[-1]],
-        sample.observations[0],
-        t_eval=t,
-    ).y.T
-    ax.plot(
-        true_z[:, 0],
-        true_z[:, 1],
-        "-",
-        color="black",
-        linewidth=2,
-        label="True Latent Trajectory",
-    )
-
-    if title is not None:
-        ax.set_title(title)
-    ax.set_xlabel("Dimension 1")
-    ax.set_ylabel("Dimension 2")
-    ax.legend()
-    ax.grid(True)
-    # ax.set_aspect("equal", "box")
-
-    return ax
-
-
-def plot_simulate_dataset(
-    dataset: SimulatedDataset,
-    num_samples_per_cluster: int = 2,
-    seed: int = 42,
-) -> Figure:
-    rng = np.random.default_rng(seed)
-
-    fig, axs = plt.subplots(
-        dataset.num_clusters,
-        num_samples_per_cluster,
-        figsize=(6 * num_samples_per_cluster, 5 * dataset.num_clusters),
-        squeeze=False,
-    )
-
-    for k in range(dataset.num_clusters):
-        cluster_indices = np.where(dataset.true_k == k)[0]
-        if len(cluster_indices) == 0:
-            continue
-
-        sample_indices = rng.choice(
-            cluster_indices,
-            size=min(num_samples_per_cluster, len(cluster_indices)),
-            replace=False,
-        )
-
-        for sample_idx, ax in zip(sample_indices, axs[k]):
-            patient_data = dataset.samples[sample_idx]
-            plot_simulate_sample(
-                patient_data,
-                ax=ax,
-                title=f"Patient ID: {sample_idx}, Cluster: {k}",
-            )
-
-    fig.tight_layout()
-    return fig
-
-
 class SimulatedDatasetForTorch(Dataset):
     def __init__(
         self,
@@ -366,12 +277,3 @@ class SimulatedDatasetForTorch(Dataset):
             res = self.transform(res)
 
         return res
-
-
-# --- 3. 示例用法 ---
-if __name__ == "__main__":
-    # 示例1：生成无缺失的数据并可视化
-    print("--- 示例 1: 生成无缺失的数据 ---")
-    simu_data = simulate(num_patients=50, missing_rate=0.0)
-    fig = plot_simulate_dataset(simu_data)
-    fig.savefig("simulated_data.png", dpi=300)

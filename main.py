@@ -1,9 +1,11 @@
 from node_tc.simulate import (
+    ALL_DYNAMICS,
     simulate,
     write_simulate_data_to_csv,
     SimulatedDatasetForTorch,
 )
 from node_tc import NODETrajectoryCluster
+from node_tc.plot import TrajectoriesPlotter
 
 
 def main():
@@ -32,8 +34,17 @@ def main():
     )
     write_simulate_data_to_csv("./data/simulate/example1/", simu_data)
 
-    # fig = simu_data.plot(num_samples_per_cluster=3, seed=42)
-    # fig.savefig("simulated_data.png")
+    # sample = simu_data.samples[0]
+    # plotter = TrajectoriesPlotter(
+    #     t=sample.t,
+    #     observations=sample.observations,
+    #     trajectories_dfdt=ALL_DYNAMICS[sample.true_cluster],
+    # )
+    # fig = plotter.plot_trajectories()
+    # fig.savefig("sampled_trajectory.png")
+    # fig = plotter.plot_trajectories_2d()
+    # fig.savefig("sampled_trajectory_2d.png")
+    # return
 
     def transform(x):
         x["t"] = x["t"] / 10
