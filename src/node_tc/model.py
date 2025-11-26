@@ -156,11 +156,11 @@ class NODETC(nn.Module):
 
     def forward(self, patient_data: dict[str, torch.Tensor]) -> list[torch.Tensor]:
         t = patient_data["t"]  # (T,)
-        obs = patient_data["observations"]  # (B, T, D)
+        obs = patient_data["x"]  # (B, T, D)
 
         if self.init_state_encoder:
             z0 = obs[:, 0]  # (B, D)
-            static = patient_data["static_vars"]  # (B, D)
+            static = patient_data["z"]  # (B, D)
             z0 = self.encoder(z0, static)
         else:
             z0 = self.init_state.repeat(obs.shape[0], 1)
@@ -186,7 +186,7 @@ class NODETC(nn.Module):
         return preds
 
     def get_residue(self, patient_data: dict[str, torch.Tensor]) -> torch.Tensor:
-        obs = patient_data["observations"]  # (B, T, D)
+        obs = patient_data["x"]  # (B, T, D)
         mask = patient_data["mask"]  # (B, T)
         preds = self.forward(patient_data)
 
@@ -202,7 +202,7 @@ class NODETC(nn.Module):
         self, patient_data: dict[str, torch.Tensor]
     ) -> torch.Tensor:
         """计算单个患者数据在每个簇下的对数似然"""
-        obs = patient_data["observations"]  # (B, T, D)
+        obs = patient_data["x"]  # (B, T, D)
         mask = patient_data["mask"]  # (B, T)
 
         preds = self.forward(patient_data)

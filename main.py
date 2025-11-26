@@ -1,12 +1,9 @@
-from dataclasses import replace
-
-# import numpy as np
-import torch.nn as nn
-from torch.utils.data import DataLoader
-
-from node_tc.simulate import SimulatedDataset, SimulatedDataCollateFunc
-from node_tc.model import NODETC
-from node_tc.trainer import EMTrainer
+from node_tc.simulate import (
+    simulate,
+    write_simulate_data_to_csv,
+    SimulatedDatasetForTorch,
+)
+from node_tc import NODETrajectoryCluster
 
 
 def main():
@@ -20,7 +17,7 @@ def main():
     LEARNING_RATE = 0.001
 
     # 1. 生成数据
-    simu_data = SimulatedDataset.simulate(
+    simu_data = simulate(
         num_patients=NUM_PATIENTS,
         num_clusters=NUM_CLUSTERS,
         obs_dim=OBS_DIM,
@@ -33,48 +30,37 @@ def main():
         time_interval=(1, 11),
         z0=1.0,
     )
-    simu_data.write_csv("./data/simulate/example1/")
+    write_simulate_data_to_csv("./data/simulate/example1/", simu_data)
 
     # fig = simu_data.plot(num_samples_per_cluster=3, seed=42)
     # fig.savefig("simulated_data.png")
 
-    simu_data.set_transform(
-        lambda x: replace(
-            x,
-            t=x.t / 10,  # observations=(x.observations - obs_mean) / obs_std
-        )
-    )
-    loader = DataLoader(
-        simu_data,  # type: ignore
-        batch_size=64,
-        shuffle=True,
-        collate_fn=SimulatedDataCollateFunc(),
-    )
-    batch = next(iter(loader))
-    print(",".join(f"{k}:{tuple(v.shape)}" for k, v in batch.items()))
+    def transform(x):
+        x["t"] = x["t"] / 10
+        return x
 
-    model = NODETC(
-        obs_dim=OBS_DIM,
-        latent_dim=LATENT_DIM,
-        static_dim=STATIC_DIM,
+    simu_data_torch = SimulatedDatasetForTorch(simu_data, transform)
+
+    model = NODETrajectoryCluster(
         num_clusters=NUM_CLUSTERS,
+        batch_size=64,
+        learning_rate=LEARNING_RATE,
+        num_epochs=NUM_EPOCHS,
         bn=False,
         adjoint=False,
-        init_state_encoder=True,
-        activation=nn.GELU,
-        method="rk4",
-        options={"step_size": 0.1},
-    )
-    trainer = EMTrainer(
-        model=model,
-        loader=loader,
-        num_epochs=NUM_EPOCHS,
-        lr=LEARNING_RATE,
         update_nn_params_epochs_every_round=2,
     )
-    trainer.train()
 
-    fig = trainer.plot_vector_field()
+    model.fit(
+        simu_data_torch,
+        time_key="t",
+        obs_key="x",
+        id_key="id",
+        label_key="y",
+        static_vars_key="z",
+    )
+
+    fig = model.plot_vector_field()
     fig.savefig("vector_field.png")
 
 

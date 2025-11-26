@@ -37,7 +37,6 @@ class EMTrainer:
         ),
         lr: float = 1e-2,
         num_epochs: int = 50,
-        batch_size: int = 128,
         update_nn_params_epochs_every_round: int = 1,
     ):
         self.model = model
@@ -85,7 +84,7 @@ class EMTrainer:
                 responsibilities.append(respon)
                 sid.append(batch["id"])
                 if return_true_clusters:
-                    true_clusters.append(batch["true_cluster"])
+                    true_clusters.append(batch["y"])
 
         responsibilities = torch.cat(responsibilities, dim=0)
         sid = torch.cat(sid, dim=0)
@@ -148,7 +147,7 @@ class EMTrainer:
                 self.loader, desc="Finding observation range:", leave=False
             ):
                 batch = {k: v.to(self.device) for k, v in batch.items()}
-                obs = batch["observations"]  # (B, T, D)
+                obs = batch["x"]  # (B, T, D)
                 mask = batch["mask"]  # (B, T)
 
                 i, j = torch.nonzero(mask == 1.0, as_tuple=True)
@@ -162,13 +161,14 @@ class EMTrainer:
             torch.stack(obs_end_list, dim=0).max(dim=0)[0].detach().cpu().numpy()
         )
 
-    def train(self) -> torch.Tensor:
+    def train(self) -> list[dict[str, float | int]]:
         self.find_observation_range()
 
         best_ari = 0.0
         best_model = None
         best_epoch = -1
 
+        history = []
         responsibilities = self.e_step(self.loader, False)  # initial responsibilities
         for epoch in tqdm(range(self.num_epochs), desc="Training: "):
             self.update_pi(responsibilities)
@@ -189,6 +189,7 @@ class EMTrainer:
             tqdm.write(
                 f"Epoch {epoch + 1} | Adjusted Rand Index: {ari:.4f}, Entropy: {entropy:.4f}"
             )
+            history.append({"epoch": epoch + 1, "ari": ari, "entropy": entropy})
 
             if best_ari <= ari:
                 best_model = deepcopy(self.model.state_dict())
@@ -200,8 +201,7 @@ class EMTrainer:
             self.model.load_state_dict(best_model)
 
         print("\n训练完成!")
-        responsibilities = self.e_step(self.loader, False)
-        return responsibilities
+        return history
 
     def plot_vector_field(
         self,
