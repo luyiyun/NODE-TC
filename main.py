@@ -56,6 +56,7 @@ def main():
     # fig.savefig("sampled_trajectory_2d.png")
     # return
 
+    # 2. 训练模型
     def transform(x):
         x["t"] = x["t"] / 10
         return x
