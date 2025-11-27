@@ -154,6 +154,21 @@ class NODETC(nn.Module):
         # 每个簇的协方差 (这里简化为对角阵，学习log(sigma^2))
         self.register_buffer("log_vars", torch.randn(num_clusters, obs_dim))
 
+    def solve_ivp(self, k: int, z0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        func = self.ode_funcs[k]
+        if self.adjoint:
+            pred_z = odeint_adjoint(
+                func, z0, t, method=self.method, options=self.options
+            )  # (T, B, D)
+        else:
+            pred_z = odeint(
+                func, z0, t, method=self.method, options=self.options
+            )  # (T, B, D)
+        assert torch.is_tensor(pred_z), "ODE solver must return a tensor"
+        if z0.ndim == 2:
+            pred_z = pred_z.permute(1, 0, 2)  # (B, T, D)
+        return pred_z
+
     def forward(self, patient_data: dict[str, torch.Tensor]) -> list[torch.Tensor]:
         t = patient_data["t"]  # (T,)
         obs = patient_data["x"]  # (B, T, D)
@@ -168,16 +183,7 @@ class NODETC(nn.Module):
         preds = []
         for k in range(self.num_clusters):
             # 1. 求解ODE得到潜在轨迹
-            if self.adjoint:
-                pred_z = odeint_adjoint(
-                    self.ode_funcs[k], z0, t, method=self.method, options=self.options
-                )  # (T, B, D)
-            else:
-                pred_z = odeint(
-                    self.ode_funcs[k], z0, t, method=self.method, options=self.options
-                )  # (T, B, D)
-            assert torch.is_tensor(pred_z), "ODE solver must return a tensor"
-            pred_z = pred_z.permute(1, 0, 2)  # (B, T, D)
+            pred_z = self.solve_ivp(k, z0, t)
 
             # 2. 解码到观测空间
             pred_i = self.decoder(pred_z)

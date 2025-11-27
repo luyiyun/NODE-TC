@@ -38,7 +38,7 @@ def main():
         obs_dim=OBS_DIM,
         static_dim=STATIC_DIM,
         missing_rate=0.0,
-        noise_std=0.1,
+        noise_std=0.5,
         seed=42,
         num_time_internval=(5, 11),
     )
