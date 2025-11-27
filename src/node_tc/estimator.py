@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from matplotlib.figure import Figure
 
-from .simulate import SimulatedDataset, SimulatedDatasetForTorch
+from .simulate.dataset import SimulatedDataset, SimulatedDatasetForTorch
 from .model import NODETC
 from .trainer import EMTrainer
 

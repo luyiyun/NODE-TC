@@ -65,7 +65,8 @@ class TrajectoriesPlotter:
         axs = fig.subplots(ncols=n_col, nrows=n_row)
         axs = axs.flatten()
 
-        for i, ax in enumerate(axs):
+        for i in range(self.ndim):
+            ax = axs[i]
             ax.plot(self.t, self.observations[:, i], "o", label=f"Dim {i + 1}")
             if self.flag_has_trajectories:
                 ax.plot(self.t_eval, self.x[:, i], "-b", label=f"Dim {i + 1}")
