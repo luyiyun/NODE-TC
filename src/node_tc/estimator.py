@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import torch
@@ -93,6 +95,18 @@ class NODETrajectoryCluster:
         )
         self.update_nn_params_epochs_every_round = update_nn_params_epochs_every_round
 
+        self.params_ = {
+            "num_clusters": num_clusters,
+            "batch_size": batch_size,
+            "num_workers": num_workers,
+            "learning_rate": learning_rate,
+            "num_epochs": num_epochs,
+            "bn": bn,
+            "adjoint": adjoint,
+            "device": str(device),
+            "update_nn_params_epochs_every_round": update_nn_params_epochs_every_round,
+        }
+
     def fit(
         self,
         dataset: Dataset | SimulatedDataset | SimulatedDatasetForTorch,
@@ -157,3 +171,22 @@ class NODETrajectoryCluster:
 
     def plot_vector_field(self) -> Figure:
         return self.trainer_.plot_vector_field()
+
+    def save_model(self, fn: str | Path) -> None:
+        res = {
+            "model": self.model_.state_dict(),
+            "params": self.params_,
+        }
+        torch.save(res, fn)
+
+    @classmethod
+    def load_model(
+        cls, fn: str | Path, device: str | torch.device = "cuda"
+    ) -> "NODETrajectoryCluster":
+        res = torch.load(fn)
+        estimator = cls(**res["params"])
+        estimator.model_.load_state_dict(res["model"])
+        return estimator
+
+    def save_history(self, fn: str | Path) -> None:
+        self.history_.to_csv(fn)
