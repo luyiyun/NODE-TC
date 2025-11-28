@@ -14,8 +14,12 @@
 
 1. **克隆项目**
    ```bash
-   git clone <your-repo-url>
-   cd <your-project-dir>
+   git clone https://github.com/luyiyun/NODE-TC.git
+   cd NODE-TC
+
+   # 如果已经克隆，需要更新最新的代码。
+   git checkout master
+   git pull
    ```
 
 2. **安装 uv (如果尚未安装)**
