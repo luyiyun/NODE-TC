@@ -41,10 +41,22 @@
 
 ## 运行示例
 
-在配置好环境后，直接运行示例脚本：
+1. **生成模拟数据**
 
-```bash
-uv run main.py
-```
+   ```bash
+   uv run simulate.py --data_dir ./data/simulate/example
+   # 会将数据保存到 ./data/simulate/example_{时间戳}/ 目录中
+   # uv run simulate.py --help 查看所有可以设置的参数
+   ```
 
-程序将生成模拟数据，训练模型。数据储存在`./data/simulate/`中。
+2. **训练模型**
+
+   ```bash
+   # 基于模拟数据训练模型
+   uv run train.py --data_type simulate --data_dir ./data/simulate/example --save_dir ./results/simulate/example
+   # 会将结果保存到 ./results/simulate/example_{时间戳}/ 目录中
+   # uv run train.py --help 查看所有可以设置的参数
+
+   # 基于真实数据训练模型
+   # TODO
+   ```
