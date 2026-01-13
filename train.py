@@ -3,11 +3,7 @@ from pathlib import Path
 from datetime import datetime
 import json
 
-
-from node_tc.simulate.dataset import (
-    SimulatedDatasetForTorch,
-    read_simulate_data_from_csv,
-)
+from node_tc.simulate.dataset import SimulatedDataset, SimulatedDatasetForTorch
 from node_tc import NODETrajectoryCluster
 
 
@@ -81,11 +77,11 @@ def main():
 
     # --- 数据集加载 ---
     if args.data_type == "simulate":
-        simu_data = read_simulate_data_from_csv(data_dir)
+        simu_data = SimulatedDataset.read_csv(data_dir)
 
         with open(data_dir / "args.json", "r") as f:
             simu_args = json.load(f)
-        max_t = simu_args["num_time_internval"][1] - 1
+        max_t = simu_args["num_time_interval"][1] - 1
 
         def transform(x):
             x["t"] = x["t"] / max_t

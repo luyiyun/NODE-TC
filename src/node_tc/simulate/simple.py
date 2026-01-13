@@ -118,7 +118,7 @@ def simulate(
                 true_cluster=k_i,
                 static_vars=static_vars[i] if flag_static else None,
                 t=t,
-                observations=obs_i,
+                obs=obs_i,
                 # true_z=traj_i,
             )
         )

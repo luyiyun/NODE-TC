@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from matplotlib.figure import Figure
 
-from .simulate.dataset import SimulatedDataset, SimulatedDatasetForTorch
+from .simulate.dataset import SimulatedDataset, SimulatedDatasetForTorch, SimuItem
 from .model import NODETC
 from .trainer import EMTrainer
 
@@ -27,29 +27,34 @@ class TrajectoryDatasetCollateFunc:
         self.id_key = id_key
 
     def __call__(
-        self, batch: list[dict[str, np.ndarray | int]]
+        self, batch: list[SimuItem]
     ) -> dict[str, torch.Tensor]:
         obs_i = batch[0][self.obs_key]
-        assert isinstance(obs_i, np.ndarray), f"obs_i is not a numpy array: {obs_i}"
+        assert torch.is_tensor(obs_i), f"obs_i is not a torch tensor: {obs_i}"
 
-        t = np.sort(
-            np.unique(np.concatenate([sample[self.time_key] for sample in batch]))
-        )
-        obs = np.zeros((len(batch), len(t), obs_i.shape[1]))
-        mask = np.zeros((len(batch), len(t)))
+        t, _ = torch.cat([sample[self.time_key] for sample in batch]).unique().sort()
+        obs = torch.zeros((len(batch), len(t), obs_i.shape[1]), dtype=torch.float32)
+        mask = torch.zeros((len(batch), len(t)), dtype=torch.float32)
         for i, sample in enumerate(batch):
-            ind = np.searchsorted(t, sample[self.time_key])
-            obs[i, ind, :] = sample[self.obs_key]
+            t_i = sample[self.time_key]
+            obs_i = sample[self.obs_key]
+            ind = torch.searchsorted(t, t_i)
+            obs[i, ind, :] = obs_i
             mask[i, ind] = 1.0
 
+
         res = {
-            "t": torch.tensor(t, dtype=torch.float32),
-            "x": torch.tensor(obs, dtype=torch.float32),
-            "mask": torch.tensor(mask, dtype=torch.float32),
+            "t": t,
+            "x": obs,
+            "mask": mask,
             "id": torch.tensor(
                 [sample[self.id_key] for sample in batch], dtype=torch.long
             ),
         }
+        if (res["t"][1:] - res["t"][:-1]).min() == 0:
+            # fmt: off
+            import ipdb; ipdb.set_trace()
+            # fmt: on
 
         if self.label_key is not None:
             if self.label_key not in batch[0]:
@@ -62,10 +67,7 @@ class TrajectoryDatasetCollateFunc:
                 raise ValueError(
                     f"static_vars_key {self.static_vars_key} not in batch[0]"
                 )
-            res["z"] = torch.tensor(
-                np.stack([sample[self.static_vars_key] for sample in batch], axis=0),
-                dtype=torch.float32,
-            )
+            res["z"] = torch.stack([sample[self.static_vars_key] for sample in batch], dim=0)
 
         return res
 
@@ -121,23 +123,31 @@ class NODETrajectoryCluster:
         if isinstance(dataset, SimulatedDataset):
             dataset = SimulatedDatasetForTorch(dataset)
 
-        loader = DataLoader(
+        collate_fn = TrajectoryDatasetCollateFunc(
+            time_key=time_key,
+            obs_key=obs_key,
+            id_key=id_key,
+            label_key=label_key,
+            static_vars_key=static_vars_key,
+        )
+        loader_shuffle = DataLoader(
             dataset,  # type: ignore
             num_workers=self.num_workers,
             batch_size=self.batch_size,
             shuffle=True,
-            collate_fn=TrajectoryDatasetCollateFunc(
-                time_key=time_key,
-                obs_key=obs_key,
-                id_key=id_key,
-                label_key=label_key,
-                static_vars_key=static_vars_key,
-            ),
+            collate_fn=collate_fn,
         )
+        # loader_noshuffle = DataLoader(
+        #     dataset,  # type: ignore
+        #     num_workers=self.num_workers,
+        #     batch_size=self.batch_size,
+        #     shuffle=False,
+        #     collate_fn=collate_fn,
+        # )
 
-        batch1 = next(iter(loader))
-        obs_dim = batch1["x"].shape[-1]
-        static_dim = 0 if static_vars_key is None else batch1["z"].shape[-1]
+        batch1 = next(iter(loader_shuffle))
+        obs_dim = batch1[obs_key].shape[-1]
+        static_dim = 0 if static_vars_key is None else batch1[static_vars_key].shape[-1]
 
         # 初始化模型
         self.model_ = NODETC(
@@ -154,7 +164,7 @@ class NODETrajectoryCluster:
         # 初始化训练器
         self.trainer_ = EMTrainer(
             model=self.model_,
-            loader=loader,
+            loader=loader_shuffle,
             num_epochs=self.num_epochs,
             lr=self.learning_rate,
             device=self.device,
@@ -166,7 +176,7 @@ class NODETrajectoryCluster:
         self.history_ = pd.DataFrame.from_records(history)
 
         # 得到最终属于各自集群的概率
-        responsibilities = self.trainer_.e_step(loader, False)
+        responsibilities = self.trainer_.e_step(loader_shuffle, False)
         self.responsibilities_ = responsibilities.cpu().numpy()
 
     def plot_vector_field(self) -> Figure:

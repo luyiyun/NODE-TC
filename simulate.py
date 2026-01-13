@@ -4,7 +4,6 @@ from pathlib import Path
 import json
 
 from node_tc.simulate import linear
-from node_tc.simulate.dataset import write_simulate_data_to_csv
 from node_tc.plot import TrajectoriesPlotter
 
 
@@ -41,7 +40,7 @@ def main():
         "--seed", type=int, default=42, help="生成数据集的随机种子, 默认为42"
     )
     parser.add_argument(
-        "--num_time_internval",
+        "--num_time_interval",
         type=int,
         nargs=2,
         default=[5, 11],
@@ -65,9 +64,9 @@ def main():
         missing_rate=args.missing_rate,
         noise_std=args.noise_std,
         seed=args.seed,
-        num_time_internval=args.num_time_internval,
+        num_time_interval=args.num_time_interval,
     )
-    write_simulate_data_to_csv(data_dir, simu_data)
+    simu_data.to_csv(data_dir)
 
     with open(data_dir / "args.json", "w") as f:
         json.dump(vars(args), f)
@@ -77,7 +76,7 @@ def main():
         sample = simu_data.samples[0]
         plotter = TrajectoriesPlotter(
             t=sample.t,
-            observations=sample.observations,
+            observations=sample.obs,
             trajectories_dfdt=dynamics[sample.true_cluster],
         )
         fig = plotter.plot_trajectories()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 from typing import List
+from pathlib import Path
+from collections import UserList
 
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -22,8 +24,10 @@ class LinearMechanisticDynamics:
     """
 
     def __init__(self, A: np.ndarray, mu: np.ndarray | None = None):
+        assert A.shape[0] == A.shape[1], "A must be a square matrix"
+
         self.A = A
-        self.dim = A.shape[0]
+        self.dim = A.shape[1]
         # 如果没有指定稳态点，默认为0（虽然在医学上不常见，但作为数学默认值）
         self.mu = mu if mu is not None else np.zeros(self.dim)
 
@@ -34,6 +38,23 @@ class LinearMechanisticDynamics:
     def __repr__(self):
         eig = np.linalg.eigvals(self.A)
         return f"Dynamics(dim={self.dim}, max_real_eig={np.max(eig.real):.2f})"
+
+    def save(self, path: str | Path) -> None:
+        path = Path(path)
+        assert path.suffix == ".npy", "Only support .npy format"
+
+        save_mat = np.concatenate([self.A, self.mu.reshape(1, -1)], axis=1)
+        np.save(path, save_mat)
+
+    @classmethod
+    def load(cls, path: str | Path) -> LinearMechanisticDynamics:
+        path = Path(path)
+        assert path.suffix == ".npy", "Only support .npy format"
+
+        load_mat = np.load(path)
+        A = load_mat[:, :-1]
+        mu = load_mat[:, -1]
+        return cls(A, mu)
 
 
 def generate_random_linear_system(
@@ -125,7 +146,7 @@ def simulate(
     obs_dim: int = 10,  # 观测维度
     static_dim: int = 3,  # 静态变量维度
     z0: int | float | np.ndarray | None = 0.0,
-    num_time_internval: tuple[int, int] = (10, 25),  # 观测次数范围
+    num_time_interval: tuple[int, int] = (10, 25),  # 观测次数范围
     time_max: float = 10.0,  # 最大时间跨度
     missing_rate: float = 0.0,
     noise_std: float = 0.1,  # 观测噪声
@@ -198,7 +219,7 @@ def simulate(
 
     # 确定每个病人的时间点
     num_time_points = rng.integers(
-        num_time_internval[0], num_time_internval[1], size=num_patients
+        num_time_interval[0], num_time_interval[1], size=num_patients
     )
 
     for i in range(num_patients):
@@ -235,18 +256,25 @@ def simulate(
 
         # 处理缺失值 (Missing Data)
         if missing_rate > 0:
-            mask = rng.random(obs_noisy.shape) < missing_rate
-            # 保证至少第一个时间点的部分特征存在，或者不做特殊处理（取决于你的模型需求）
-            # 这里我们简单地随机mask
-            obs_noisy[mask] = np.nan
+            mask = rng.random(obs_noisy.shape[0]) >= missing_rate
+            if np.sum(mask) == 0:
+                # 保证至少第一个时间点的部分特征存在，或者不做特殊处理（取决于你的模型需求）
+                obs_noisy = obs_noisy[[0]]
+            else:
+                obs_noisy = obs_noisy[mask]
+            t_obs = t_eval[mask]
+        else:
+            t_obs = t_eval
 
         samples.append(
             SimulatedSample(
                 id=i,
                 true_cluster=k_i,
-                t=t_eval,
-                observations=obs_noisy,
+                t=t_obs,
+                obs=obs_noisy,
                 static_vars=static_vars[i] if static_dim > 0 else None,
+                t_=t_eval,
+                obs_=traj_z,
             )
         )
 
